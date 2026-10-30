@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Othello Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        select, button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            flex: 1;
+        }
+        
+        select {
+            background-color: #333;
+            border: 1px solid #4CAF50;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .scoreboard {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .score-box {
+            padding: 10px 20px;
+            border-radius: 5px;
+            background-color: #333;
+            font-weight: bold;
+            width: 48%;
+        }
+
+        .score-box.active {
+            box-shadow: 0 0 10px #4CAF50;
+            border: 2px solid #4CAF50;
+        }
+
+        #status-message {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            font-weight: bold;
+            height: 24px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            background-color: #222;
+            border: 4px solid #333;
+            aspect-ratio: 1 / 1;
+            margin-bottom: 20px;
+        }
+
+        .cell {
+            background-color: #0b6623;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .cell:hover {
+            background-color: #0e802c;
+        }
+
+        .disc {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+        }
+
+        .disc.black {
+            background-color: #111;
+            box-shadow: inset -3px -3px 5px rgba(255,255,255,0.2);
+        }
+
+        .disc.white {
+            background-color: #eee;
+            box-shadow: inset -3px -3px 5px rgba(0,0,0,0.3);
+        }
+
+        .disc.valid-move {
+            background-color: rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Othello</h1>
+        
+        <div class="controls">
+            <select id="game-mode" onchange="initGame()">
+                <option value="pva">Player vs AI</option>
+                <option value="pvp">Player vs Player</option>
+            </select>
+            <button id="restart-btn" onclick="initGame()">Restart Game</button>
+        </div>
+
+        <div class="scoreboard">
+            <div class="score-box black-score-box active">Black: <span id="score-black">2</span></div>
+            <div class="score-box white-score-box">White: <span id="score-white">2</span></div>
+        </div>
+        
+        <div id="status-message">Black's Turn</div>
+        <div id="game-board" class="board"></div>
+    </div>
+
+    <script>
+        const boardElement = document.getElementById('game-board');
+        const scoreBlackEl = document.getElementById('score-black');
+        const scoreWhiteEl = document.getElementById('score-white');
+        const statusMessage = document.getElementById('status-message');
+        const blackScoreBox = document.querySelector('.black-score-box');
+        const whiteScoreBox = document.querySelector('.white-score-box');
+        const gameModeSelect = document.getElementById('game-mode');
+
+        let board = [];
+        let currentPlayer = 1; // 1 = Black (Player), 2 = White (Player or AI)
+        let isAIThinking = false;
+        
+        const directions = [
+            [-1, 0], [1, 0], [0, -1], [0, 1], // Up, Down, Left, Right
+            [-1, -1], [-1, 1], [1, -1], [1, 1] // Diagonals
+        ];
+
+        function initGame() {
+            board = Array(8).fill(null).map(() => Array(8).fill(0));
+            board[3][3] = 2;
+            board[3][4] = 1;
+            board[4][3] = 1;
+            board[4][4] = 2;
+            
+            currentPlayer = 1;
+            isAIThinking = false;
+            updateUI();
+        }
+
+        function getValidFlips(row, col, player) {
+            if (board[row][col] !== 0) return [];
+            
+            let flips = [];
+            const opponent = player === 1 ? 2 : 1;
+
+            for (const [dr, dc] of directions) {
+                let r = row + dr;
+                let c = col + dc;
+                let potentialFlips = [];
+
+                while (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] === opponent) {
+                    potentialFlips.push({ r, c });
+                    r += dr;
+                    c += dc;
+                }
+
+                if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] === player && potentialFlips.length > 0) {
+                    flips.push(...potentialFlips);
+                }
+            }
+            return flips;
+        }
+
+        function getAllValidMoves(player) {
+            let validMoves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (getValidFlips(r, c, player).length > 0) {
+                        validMoves.push({ r, c });
+                    }
+                }
+            }
+            return validMoves;
+        }
+
+        function handleCellClick(row, col) {
+            // Prevent clicking if it's AI's turn
+            if (isAIThinking) return;
+
+            const flips = getValidFlips(row, col, currentPlayer);
+            
+            if (flips.length > 0) {
+                executeMove(row, col, flips);
+            }
+        }
+
+        function executeMove(row, col, flips) {
+            // Apply the move and flip discs
+            board[row][col] = currentPlayer;
+            flips.forEach(flip => board[flip.r][flip.c] = currentPlayer);
+            
+            // Switch turns
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            
+            // Check if next player has valid moves, if not, skip turn back
+            if (getAllValidMoves(currentPlayer).length === 0) {
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+            }
+            
+            updateUI();
+
+            // Trigger AI if it's White's turn and game mode is Player vs AI
+            if (gameModeSelect.value === 'pva' && currentPlayer === 2 && getAllValidMoves(2).length > 0) {
+                isAIThinking = true;
+                statusMessage.innerText = "AI is thinking...";
+                setTimeout(makeAIMove, 600); // 0.6 second delay for realistic feel
+            }
+        }
+
+        function makeAIMove() {
+            const validMoves = getAllValidMoves(2);
+            if (validMoves.length === 0) {
+                isAIThinking = false;
+                return;
+            }
+
+            let bestMove = null;
+            let maxScore = -Infinity;
+
+            validMoves.forEach(move => {
+                const flips = getValidFlips(move.r, move.c, 2);
+                let score = flips.length;
+                
+                // AI Logic: Prioritize corners highly
+                if ((move.r === 0 || move.r === 7) && (move.c === 0 || move.c === 7)) {
+                    score += 50; 
+                }
+                // AI Logic: Penalize moves directly adjacent to corners (dangerous)
+                else if ((move.r <= 1 || move.r >= 6) && (move.c <= 1 || move.c >= 6)) {
+                    score -= 15;
+                }
+                // AI Logic: Reward edge control
+                else if (move.r === 0 || move.r === 7 || move.c === 0 || move.c === 7) {
+                    score += 5;
+                }
+
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestMove = { ...move, flips };
+                }
+            });
+
+            isAIThinking = false;
+            if (bestMove) {
+                executeMove(bestMove.r, bestMove.c, bestMove.flips);
+            }
+        }
+
+        function updateUI() {
+            boardElement.innerHTML = '';
+            let blackScore = 0;
+            let whiteScore = 0;
+            const validMoves = getAllValidMoves(currentPlayer);
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.onclick = () => handleCellClick(r, c);
+
+                    if (board[r][c] === 1) {
+                        blackScore++;
+                        cell.innerHTML = '<div class="disc black"></div>';
+                    } else if (board[r][c] === 2) {
+                        whiteScore++;
+                        cell.innerHTML = '<div class="disc white"></div>';
+                    } else {
+                        // Show valid move indicators only for the human player
+                        const isValid = validMoves.some(m => m.r === r && m.c === c);
+                        if (isValid && (!isAIThinking || currentPlayer === 1)) {
+                            cell.innerHTML = '<div class="disc valid-move"></div>';
+                        }
+                    }
+                    boardElement.appendChild(cell);
+                }
+            }
+
+            scoreBlackEl.innerText = blackScore;
+            scoreWhiteEl.innerText = whiteScore;
+
+            blackScoreBox.classList.toggle('active', currentPlayer === 1);
+            whiteScoreBox.classList.toggle('active', currentPlayer === 2);
+
+            // Game End Conditions
+            const player1Moves = getAllValidMoves(1).length;
+            const player2Moves = getAllValidMoves(2).length;
+
+            if (player1Moves === 0 && player2Moves === 0) {
+                if (blackScore > whiteScore) statusMessage.innerText = 'Black Wins!';
+                else if (whiteScore > blackScore) statusMessage.innerText = 'White Wins!';
+                else statusMessage.innerText = 'It\'s a Tie!';
+            } else if (!isAIThinking) {
+                statusMessage.innerText = currentPlayer === 1 ? "Black's Turn" : "White's Turn";
+            }
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
